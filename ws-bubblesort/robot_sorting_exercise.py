@@ -1,184 +1,177 @@
-"""
-Workshop Aufgabe: BubbleSort & DDD (90 Min)
-Ziel: Value Objects (@dataclass), Entitäten (UUID), XML laden, Break, Bubble Sort.
-"""
-from fileinput import filename
-import random
-import time
-import uuid
-import xml.etree.ElementTree as ET
-from enum import Enum
-from typing import Final
-# WICHTIG: Importiere dataclass
-from dataclasses import dataclass
+import random # random ist eine eingebaute Bibliothek in Python, die Funktionen für die Erzeugung von Zufallszahlen und -ereignissen bereitstellt. In unserem Fall verwenden wir sie, um zufällige Ladegeschwindigkeiten, zufällige Ereignisse während der Sortierung (z.B. Überhitzung) und zufällige Gewichte für die Pakete zu generieren. Das macht unsere Simulation realistischer und spannender, da nicht immer alles nach Plan läuft.
+import time # time ist eine eingebaute Bibliothek in Python, die Funktionen für die Zeitmessung und -manipulation bereitstellt. In unserem Fall verwenden wir sie, um den Ladevorgang des Roboters zu simulieren, indem wir eine kurze Pause einlegen, damit es realistischer wirkt.
+import uuid # UUID (Universally Unique Identifier) ist eine eingebaute Bibliothek in Python, die es uns ermöglicht, eindeutige Identifikatoren zu erstellen. In unserem Fall verwenden wir sie, um jedem Roboter eine einzigartige ID zu geben, damit wir sie auch dann unterscheiden können, wenn sie den gleichen Namen haben. Das ist besonders wichtig in einem Szenario mit mehreren Robotern oder wenn wir den Zustand eines Roboters über die Zeit verfolgen wollen.
+import xml.etree.ElementTree as ET # ET steht für ElementTree und ist eine eingebaute Bibliothek in Python, die es uns ermöglicht, XML-Daten zu erstellen, zu bearbeiten und zu speichern. In unserem Fall verwenden wir sie, um den Zustand des Fließbands in einer XML-Datei zu speichern und wieder zu laden. Das ist besonders nützlich, weil XML eine strukturierte und leicht lesbare Art der Datenspeicherung bietet, die auch von anderen Programmen oder System
+from enum import Enum # Enum ist eine spezielle Klasse, die eine Gruppe von konstanten Werten definiert. In unserem Fall verwenden wir sie, um die möglichen Ergebnisse einer Arbeitsschicht zu beschreiben (z.B. ob die Sortierung erfolgreich war oder ob es Probleme gab). Das macht unseren Code lesbarer und weniger fehleranfällig, da wir nicht mit willkürlichen Strings oder Zahlen arbeiten müssen
+from typing import Final #  Final ist eine Typ-Hinweis, der anzeigt, dass eine Variable nach ihrer Initialisierung nicht mehr geändert werden soll. Es ist eine Art "Konstante" in Python, die hilft, unbeabsichtigte Änderungen zu vermeiden und den Code lesbarer zu machen.
+from dataclasses import dataclass #Dataclass ist eine praktische Funktion, um Klassen zu erstellen, die hauptsächlich Daten speichern. Sie generiert automatisch Methoden wie __init__ und __repr__, damit wir uns auf die Logik konzentrieren können, anstatt viel Boilerplate-Code zu schreiben.
+
+# --- DOMAIN LAYER: Definitionen ---
 
 class ShiftResult(Enum):
+    """Beschreibt den Status nach einer Arbeitsschicht (Domain Status)."""
     COMPLETED = "completed"
     BATTERY_EMPTY = "battery_empty"
     EMERGENCY_OVERHEAT = "emergency_overheat"
     EMERGENCY_BELT_DEFECT = "emergency_belt_defect"
 
-# TODO 1: Value Object (Wertobjekt) erstellen
-# Nutze den Decorator @dataclass(frozen=True) über der Klasse 'Package'.
-# Schreibe als einzige Zeile in die Klasse: weight: int
 @dataclass(frozen=True)
-class Package:
+class Package: 
+    """
+    DDD Value Object: Ein Paket ist nur durch seinen Wert (Gewicht) definiert.
+    'frozen=True' macht es unveränderbar (immutable), wie eine Zahl oder ein String.
+    """
     weight: int 
     
     def __repr__(self) -> str:
         return f"[{self.weight}kg]"
 
 class WarehouseRobot:
+    """
+    DDD Entity: Ein Roboter hat eine eindeutige Identität (_id), 
+    die über die Zeit gleich bleibt, auch wenn sich sein Akku oder Name ändert.
+    """
     def __init__(self, name: str, starting_battery: int = 50) -> None:
-        # TODO 2: Die Identität der Entität (Der Ausweis)
-        self._id: Final[uuid] = uuid.uuid4()
-        self._name: Final[str] = name
-        self._battery: int = starting_battery
-        self._is_active: bool = True
-        # Erzeuge eine UUID mit uuid.uuid4() und weise sie der internen 
-        # Variable self._id zu. (Typisierung: Final)
-        
-        self._name: Final[str] = name
-        self._battery: int = starting_battery
-        self._is_active: bool = True
+        # Final stellt sicher, dass die ID nach der Erzeugung nicht mehr geändert wird.
+        self._id: Final[uuid.UUID] = uuid.uuid4() # Jede Instanz bekommt eine einzigartige ID, damit wir sie eindeutig identifizieren können, auch wenn sie den gleichen Namen haben.
+        self._name: Final[str] = name # Der Name ist ebenfalls final, da er sich nicht ändern soll. In einem echten Szen
+        self._battery: int = starting_battery # Der Akku ist veränderlich, da er sich durch die Arbeit entleert und durch das Aufladen wieder füllt.
+        self._is_active: bool = True # Ein einfacher Status, um zu wissen, ob der Roboter arbeiten kann oder nicht. Er könnte z.B. durch Überhitzung oder Defekte inaktiv werden.
+        self._packages_sorted: int = 0 # Zählt, wie viele Pakete der Roboter bereits sortiert hat. Das ist eine Metrik für seine Leistung.
 
     def recharge(self) -> None:
-        print(f"\n🔌 Ladevorgang startet (Akku: {self._battery}%)...")
+        """Simuliert den Ladevorgang mit einer Kontrollschleife."""
+        print(f"\n🔌 Ladevorgang startet (Aktueller Stand: {self._battery}%)...")
         
-        # TODO 4: Das intelligente Aufladen (For-Schleife & Break)
-        # 1. Baue eine for-Schleife für 20 Sekunden: for sekunde in range(1, 21):
-        for sekunde in range(1, 21):
-            if self._battery >= 100:
-                self._battery = 100
-                print(f"100% erreicht! Ladevorgang gestoppt nach {sekunde -1} Sekunden.")
-            self._battery += random.randint(1, 5)
+        for sekunde in range(1, 21): # Maximal 20 Sekunden Ladezeit, um nicht ewig zu warten
+            if self._battery >= 100: # Sobald 100% erreicht sind, können wir den Ladevorgang beenden
+                print(f"✅ Voll geladen nach {sekunde-1} Sekunden.")
+                break # 'break' beendet die Schleife vorzeitig, wenn 100% erreicht sind
+            
+            # Zufällige Ladegeschwindigkeit pro Sekunde
+            self._battery += random.randint(5, 15)
             if self._battery > 100:
                 self._battery = 100
-                print(f"100% erreicht! Ladevorgang gestoppt nach {sekunde} Sekunden.")
-            time.sleep(1,0) # Simuliere die Ladezeit mit time.sleep(1)
+            
+            time.sleep(0.1) # Kurze Pause zur Simulation
+            
         self._is_active = True
-        print(f"Ladevorgang beendet.")
 
     def sort_packages(self, belt: list[Package]) -> ShiftResult:
-        if not self._is_active:
-           return ShiftResult.BATTERY_EMPTY    
+        """
+        Der Kern-Algorithmus: Bubble Sort.
+        Vergleicht benachbarte Pakete und schiebt schwere 'nach hinten'.
+        """
+        if not self._is_active: # Wenn der Roboter nicht aktiv ist, kann er nicht arbeiten.
+           return ShiftResult.BATTERY_EMPTY    # Wir nehmen an, dass der Roboter nur inaktiv ist, wenn der Akku leer ist. In einem echten Szenario könnte es auch andere Gründe geben, aber für unsere Simulation reicht das als Annahme.
        
-        n = len(belt)
-        print(f"{self._name} startet die Sortierung von {n} Paketen ")
-        # TODO 5: Bubble Sort Schleifen bauen.
-        # Outer Loop: for i in range(n)
-        # Inner Loop: for j in range(0, n - i - 1)
+        n = len(belt) # Anzahl der Pakete auf dem Fließband
         
+        # Äußere Schleife: Geht durch das gesamte Band
         for i in range(n):
-            swapped = False
+            swapped = False # Optimierung: Wenn nichts getauscht wird, ist alles sortiert
+            
+            # Innere Schleife: Vergleicht Nachbarn. 
+            # Mit jedem 'i' wandert das schwerste verbliebene Paket ans Ende.
             for j in range(0, n - i - 1):
                 
-                # ZUFALLS-EVENTS (Notaus)
-                hazard = random.random()
-                if hazard < 0.01:
+                # 1. ZUFALLS-EVENTS (Domain Hazards)
+                if random.random() < 0.02:
                     self._is_active = False
                     return ShiftResult.EMERGENCY_OVERHEAT
-                elif hazard < 0.02:
-                    self._is_active = False
-                    return ShiftResult.EMERGENCY_BELT_DEFECT
 
-                # TODO 6: Energie für den VGL prüfen
+                # 2. ENERGIE-CHECK (Grundverbrauch für den Vergleich)
                 if self._battery < 1:
                     self._is_active = False
                     return ShiftResult.BATTERY_EMPTY
-                
                 self._battery -= 1
-                # Wenn _battery < 1, setze _is_active auf False und 
-                # gib ShiftResult.BATTERY_EMPTY zurück!
-                # Sonst: Ziehe 1 von _battery ab.
+                
                 left_pkg = belt[j]
                 right_pkg = belt[j + 1]
+                
+                #Bubble Sort: Die innere Schleife vergleicht immer j und j+1. Ist das linke Paket schwerer, 
+                # "blubbert" es eine Position nach rechts.
 
-                # TODO 7: Der schwere Tausch
+                # 3. VERGLEICH & TAUSCH (Der eigentliche Bubble Sort)
                 if left_pkg.weight > right_pkg.weight:
+                    # Tauschkosten sind abhängig vom Gewicht des Pakets
                     if self._battery < left_pkg.weight:
-                        swap_cost = left_pkg.weight
-                        if self._battery < swap_cost:
-                            self._is_active = False
-                            return ShiftResult.BATTERY_EMPTY
-                    self._battery -= left_pkg.weight
-                    belt[j], belt[j + 1] = belt[j + 1], belt[j]
-                    swapped = True
+                        self._is_active = False
+                        return ShiftResult.BATTERY_EMPTY
                     
-                # WENN das Gewicht von left_pkg > right_pkg ist:
-                #   1. Prüfe, ob _battery < left_pkg.weight ist (Wenn ja -> BATTERY_EMPTY)
-                #   2. Ziehe left_pkg.weight vom _battery ab.
-                #   3. Tausche die Pakete im 'belt' (belt[j], belt[j+1] = belt[j+1], belt[j])
-                #   4. Setze swapped auf True
+                    self._battery -= left_pkg.weight # Energie für körperliche Arbeit abziehen
+                    belt[j], belt[j + 1] = belt[j + 1], belt[j] # Tausch der Pakete in der Liste 
+                    swapped = True
                 
-                
+            # Wenn in einem Durchlauf kein Tausch stattfand -> Fertig!
             if not swapped:
-                return ShiftResult.COMPLETED
+                break
                 
         return ShiftResult.COMPLETED
 
-class XmlPackageRepository:
-    def load_manifest(self, filename: str) -> list[Package]:
-        packages: list[Package] = [ET.parse(filename)]
-        try:
-            tree = ET.parse(filename)
-            root = tree.getroot()
-            for pkg in root.findall("Package"):
-                weight_str = pkg.get("weight")
-                if weight_str is not None:
-                    try:
-                        weight = int(weight_str)
-                        packages.append(Package(weight))
-                    except ValueError:
-                        print(f"Ungültiges Gewicht '{weight_str}' in XML. Paket übersprungen.")
-                else:
-                    print("Fehlendes 'weight' Attribut in einem Package. Paket übersprungen.")
-        except FileNotFoundError:
-            print(f"Fehler: Datei {filename} nicht gefunden.")
-        except ET.ParseError:
-            print(f"Fehler: XML-Format in {filename} ist korrupt.")
-        
+# --- INFRASTRUCTURE LAYER: Datenspeicherung ---
 
-        # TODO 3: Lade die XML mit ET.parse(), suche alle "Package" Tags.
-        # Hole das Attribut 'weight', wandle es in einen 'int' um und 
-        # füge ein neues Package(weight) zur Liste hinzu. (Nutze try-except!)
+class XmlPackageRepository: # Ein Repository, das sich um das Laden und Speichern von Paketen in einer XML-Datei kümmert. Es trennt die Logik der Datenspeicherung von der Logik des Roboters, was eine gute Praxis in der Softwarearchitektur ist (Separation of Concerns).
+    """Repository-Pattern: Trennt die Logik (Sortieren) von der Speicherung (XML)."""
+    
+    def load_manifest(self, filename: str) -> list[Package]: # Lädt den aktuellen Zustand des Fließbands aus einer XML-Datei.
+        packages: list[Package] = [] # Wir erstellen eine leere Liste, die wir mit Paketen füllen werden.
+        try:
+            tree = ET.parse(filename) # Wir versuchen, die XML-Datei zu öffnen und zu lesen. Wenn die Datei nicht existiert oder beschädigt ist, wird eine Ausnahme ausgelöst.
+            root = tree.getroot() # Wir bekommen das Wurzel-Element der XML-Struktur. In unserem Fall ist das <Delivery>.
+            for pkg in root.findall("Package"): # Wir suchen alle <Package>-Elemente unter <Delivery> und gehen sie einzeln durch.
+                weight = int(pkg.get("weight", 0)) # Wir lesen das 'weight'-Attribut jedes <Package>-Elements aus. Wenn es nicht vorhanden ist, verwenden wir 0 als Standardwert. Wir wandeln den Wert in eine ganze Zahl um.
+                packages.append(Package(weight)) # Wir erstellen ein neues Package-Objekt mit dem gelesenen Gewicht und fügen es unserer Liste 'packages' hinzu.
+            print(f"📦 {len(packages)} Pakete aus {filename} geladen.") 
+        except (FileNotFoundError, ET.ParseError): # Wenn die Datei nicht gefunden wird oder die XML-Struktur ungültig ist, fangen wir die Ausnahme ab.
+            # FEHLERTOLERANZ: Falls Datei fehlt, erstellen wir Testdaten und starten trotzdem
+            print(f"⚠️ Datei fehlt. Erstelle 10 zufällige Pakete für den Start.")
+            packages = [Package(random.randint(5, 50)) for _ in range(10)] # Wir generieren 10 Pakete mit zufälligen Gewichten zwischen 5 und 50 kg, damit der Roboter etwas zu tun hat.
         return packages
 
-    def save_manifest(self, packages: list[Package], filename: str) -> None:
+    def save_manifest(self, packages: list[Package], filename: str) -> None: 
+        """Schreibt den aktuellen Zustand des Fließbands zurück in die XML."""
         root = ET.Element("Delivery")
         for pkg in packages:
             ET.SubElement(root, "Package", weight=str(pkg.weight))
         tree = ET.ElementTree(root)
         tree.write(filename, encoding="utf-8", xml_declaration=True)
 
+# --- APPLICATION LAYER: Ablaufsteuerung ---
 
 if __name__ == "__main__":
-    repo = XmlPackageRepository()
-    robot = WarehouseRobot("Sort-O-Matic", starting_battery=20)
+    repo = XmlPackageRepository() # Wir erstellen eine Instanz unseres Repositories, um mit der XML-Datei zu arbeiten. Das Repository kümmert sich um das Laden und Speichern der Pakete.
+    robot = WarehouseRobot("Sort-O-Matic", starting_battery=20) # Wir erstellen unseren Roboter mit einem Namen und einem Start-Akku von 20%. Das ist eine Herausforderung, damit er nicht sofort leer ist.
+    
+    # 1. Daten laden
     current_belt = repo.load_manifest("belt_state.xml")
     
     shift_counter = 0
     is_fully_sorted = False
     
-    while not is_fully_sorted:# Baue eine 'while not is_fully_sorted:' Schleife.
-        shift_counter += 1# 1. Zähle shift_counter hoch.
-    # 2. Lade den Roboter auf (recharge).
-        robot.recharge()
-    # 3. Rufe result = robot.sort_packages(current_belt) auf.
-        result = robot.sort_packages(current_belt)
-    # 4. Baue einen 'match result:' Block:
-    match result:
-        case ShiftResult.COMPLETED:
-            is_fully_sorted = True
-    #    case ShiftResult.COMPLETED: Setze is_fully_sorted = True
-        case ShiftResult.BATTERY_EMPTY: print("Akku leer!")
-    #    case ShiftResult.BATTERY_EMPTY: Print "Akku leer!"
-        case ShiftResult.EMERGENCY_OVERHEAT: print("Überhitzung!") 
-    #    case ShiftResult.EMERGENCY_OVERHEAT: Print "Überhitzung!"
-        case ShiftResult.EMERGENCY_BELT_DEFECT: print("Band defekt!")
-    #    case ShiftResult.EMERGENCY_BELT_DEFECT: Print "Band defekt!"
-    
-    # 5. Speichere current_belt via repo.save_manifest ab!
-    repo.save_manifest(current_belt, "belt_state.xml")
+    # 2. Hauptschleife: Der Roboter arbeitet in Schichten, bis alles sortiert ist
+    while not is_fully_sorted:
+        shift_counter += 1
+        print(f"\n--- SCHICHT {shift_counter} STARTET ---")
+        
+        # Roboter für die Schicht fit machen
+        robot.recharge() # Wir laden den Akku vor jeder Schicht auf, damit der Roboter genug Energie hat, um zu arbeiten. Das ist wichtig, da er sonst sofort leer wäre.
+        
+        # Arbeit ausführen
+        result = robot.sort_packages(current_belt) # Wir rufen die Sortierfunktion auf, die den Bubble Sort Algorithmus implementiert. Sie gibt uns ein ShiftResult zurück, das uns sagt, ob die Schicht erfolgreich war oder ob es Probleme gab (z.B. Akku leer oder Überhitzung).
+        
+        # Ergebnis auswerten (Match-Statement für saubere Fallunterscheidung)
+        match result:
+            case ShiftResult.COMPLETED:
+                print("✨ Sortierung erfolgreich abgeschlossen!")
+                is_fully_sorted = True
+            case ShiftResult.BATTERY_EMPTY:
+                print("🪫 Akku leer. Feierabend für heute.")
+            case _:
+                print(f"🚨 KRITISCHER FEHLER: {result.name}. Techniker gerufen.")
+                # Hier könnte man die Schleife auch mit 'break' abbrechen
+        
+        # 3. Fortschritt sichern (Persistence)
+        repo.save_manifest(current_belt, "belt_state.xml") # Wir speichern den aktuellen Zustand des Fließbands nach jeder Schicht, damit wir im nächsten Durchlauf dort weitermachen können, wo wir aufgehört haben. Das ist wichtig für die Fehlertoleranz und um den Fortschritt zu dokumentieren.
 
-    print(f"\n🎉 FEIERABEND! Alle Pakete in {shift_counter} Schichten sortiert.")
+    print(f"\n🏁 ZIEL ERREICHT: Alle Pakete in {shift_counter} Schichten sortiert.")
